@@ -325,13 +325,49 @@ function App() {
   const onDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragOver(false) }
   const onDrop = (e: React.DragEvent) => { e.preventDefault(); setIsDragOver(false); const file = e.dataTransfer.files[0]; if (file) handleFile(file) }
 
-  const downloadImage = () => {
+  // 移动端适配下载：Web Share API → 传统下载 → 长按保存
+  const downloadImage = async () => {
     if (!result) return
-    const link = document.createElement('a')
-    link.href = result.dataUrl
-    link.download = `cropped-${Date.now()}.jpg`
-    link.click()
+
+    // 方案1：Web Share API（支持 iOS/Android，可直接存入相册）
+    try {
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([result.blob], 'cropped.jpg', { type: 'image/jpeg' })] })) {
+        await navigator.share({
+          files: [new File([result.blob], `cropped-${Date.now()}.jpg`, { type: 'image/jpeg' })],
+          title: '头像裁剪结果',
+        })
+        return
+      }
+    } catch (err: unknown) {
+      // 用户取消分享或 API 不支持，继续尝试其他方式
+      const shareErr = err as Error
+      if (shareErr?.name === 'AbortError') return // 用户主动取消
+    }
+
+    // 方案2：传统 a 标签下载（桌面浏览器有效）
+    try {
+      const link = document.createElement('a')
+      link.href = result.dataUrl
+      link.download = `cropped-${Date.now()}.jpg`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000)
+
+      // 检测是否为移动端且可能未触发下载
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+      if (isMobile) {
+        setMobileSaveHint(true)
+        setTimeout(() => setMobileSaveHint(false), 5000)
+      }
+    } catch {
+      // 最终兜底：显示图片供长按保存
+      setShowSaveImage(true)
+    }
   }
+
+  const [mobileSaveHint, setMobileSaveHint] = useState(false)
+  const [showSaveImage, setShowSaveImage] = useState(false)
 
   const resetUpload = () => {
     if (originalPreview) URL.revokeObjectURL(originalPreview)
@@ -472,6 +508,29 @@ function App() {
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                       下载头像
                     </button>
+
+                    {/* 移动端保存提示 */}
+                    {mobileSaveHint && (
+                      <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700 text-center animate-pulse">
+                        💡 若未自动下载，请长按下方预览图 →「存储图像」
+                      </div>
+                    )}
+
+                    {/* 长按保存：移动端兜底方案 */}
+                    {showSaveImage && (
+                      <>
+                        <p className="mt-2 text-xs text-center text-gray-400">👇 长按下方图片，选择「存储到相册」</p>
+                        <img
+                          src={result.dataUrl}
+                          alt="长按保存"
+                          className="mt-1 w-full rounded-lg border-2 border-dashed border-gray-300 select-none touch-none"
+                          style={{ WebkitTouchCallout: 'default', WebkitUserSelect: 'text' }}
+                        />
+                        <button onClick={() => setShowSaveImage(false)} className="mt-2 text-xs text-gray-400 hover:text-gray-600 underline cursor-pointer">
+                          关闭
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
