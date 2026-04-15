@@ -281,9 +281,11 @@ function App() {
     }
   }, [])
 
-  // 执行裁剪处理
-  const doProcess = useCallback(async (file: File, cropPos: CropPosition) => {
-    const cropSize = Math.min(imgDimensions.w, imgDimensions.h)
+  // 执行裁剪处理（支持直接传入 dimensions，避免首次加载时 state 未更新的竞态问题）
+  const doProcess = useCallback(async (file: File, cropPos: CropPosition, dims?: { w: number; h: number }) => {
+    const d = dims || imgDimensions
+    const cropSize = Math.min(d.w, d.h)
+    if (cropSize <= 0) return
     setState('processing')
     try {
       const processResult = await processImageWithCrop(file, cropPos.x, cropPos.y, cropSize)
@@ -325,8 +327,8 @@ function App() {
       setCropPosition(pos)
       setState('editing')
 
-      // 自动进行首次居中裁剪
-      doProcess(file, pos)
+      // 自动进行首次居中裁剪（直接传入 dimensions，避免 state 竞态）
+      doProcess(file, pos, { w: img.width, h: img.height })
     }
     img.src = previewUrl
   }, [originalPreview, result, getCenterCrop, doProcess])
