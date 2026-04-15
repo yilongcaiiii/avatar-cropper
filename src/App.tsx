@@ -540,7 +540,7 @@ function App() {
                     </div>
                     <button onClick={downloadImage} className="w-full py-3.5 px-4 bg-gray-900 hover:bg-gray-800 text-white font-semibold rounded-xl transition-colors cursor-pointer text-sm flex items-center justify-center gap-2 active:scale-[0.98] active:transition-transform">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                      {isWeChatBrowser() ? '保存头像' : '下载头像'}
+                      长按图片下载
                     </button>
 
                     {/* 微信/移动端专属：全屏保存弹窗 */}
