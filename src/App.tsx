@@ -20,6 +20,32 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 const MAX_OUTPUT_KB = 200
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp']
 
+// ===================== 工具函数 =====================
+
+/** 检测是否为微信内置浏览器 */
+function isWeChatBrowser(): boolean {
+  const ua = navigator.userAgent.toLowerCase()
+  return ua.includes('micromessenger') || ua.includes('wechat')
+}
+
+/**
+ * 获取高质量 dataURL（用于长按保存）
+ */
+async function getSaveDataUrl(dataUrl: string): Promise<string> {
+  return new Promise<string>((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = OUTPUT_SIZE
+      canvas.height = OUTPUT_SIZE
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0)
+      resolve(canvas.toDataURL('image/jpeg', 0.92))
+    }
+    img.src = dataUrl
+  })
+}
+
 // ===================== 核心处理逻辑 =====================
 
 /**
@@ -325,13 +351,24 @@ function App() {
   const onDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragOver(false) }
   const onDrop = (e: React.DragEvent) => { e.preventDefault(); setIsDragOver(false); const file = e.dataTransfer.files[0]; if (file) handleFile(file) }
 
-  // 移动端适配下载：Web Share API → 传统下载 → 长按保存
+  // 下载图片：针对不同环境做适配
+  const [showSaveModal, setShowSaveModal] = useState(false)
+  const [saveDataUrl, setSaveDataUrl] = useState<string>('')
+
   const downloadImage = async () => {
     if (!result) return
 
-    // 方案1：Web Share API（支持 iOS/Android，可直接存入相册）
+    // 微信内置浏览器：直接弹出全屏大图（长按保存是唯一可靠方案）
+    if (isWeChatBrowser()) {
+      const dataUrl = await getSaveDataUrl(result.dataUrl)
+      setSaveDataUrl(dataUrl)
+      setShowSaveModal(true)
+      return
+    }
+
+    // 非微信环境：Web Share API → 传统下载 → 长按保存兜底
     try {
-      if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([result.blob], 'cropped.jpg', { type: 'image/jpeg' })] })) {
+      if (navigator.share && navigator.canShare?.({ files: [new File([result.blob], 'cropped.jpg', { type: 'image/jpeg' })] })) {
         await navigator.share({
           files: [new File([result.blob], `cropped-${Date.now()}.jpg`, { type: 'image/jpeg' })],
           title: '头像裁剪结果',
@@ -339,12 +376,11 @@ function App() {
         return
       }
     } catch (err: unknown) {
-      // 用户取消分享或 API 不支持，继续尝试其他方式
       const shareErr = err as Error
-      if (shareErr?.name === 'AbortError') return // 用户主动取消
+      if (shareErr?.name === 'AbortError') return
     }
 
-    // 方案2：传统 a 标签下载（桌面浏览器有效）
+    // 方案2：a 标签下载（桌面浏览器）
     try {
       const link = document.createElement('a')
       link.href = result.dataUrl
@@ -354,20 +390,18 @@ function App() {
       document.body.removeChild(link)
       setTimeout(() => URL.revokeObjectURL(link.href), 1000)
 
-      // 检测是否为移动端且可能未触发下载
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
       if (isMobile) {
-        setMobileSaveHint(true)
-        setTimeout(() => setMobileSaveHint(false), 5000)
+        const dataUrl = await getSaveDataUrl(result.dataUrl)
+        setSaveDataUrl(dataUrl)
+        setShowSaveModal(true)
       }
     } catch {
-      // 最终兜底：显示图片供长按保存
-      setShowSaveImage(true)
+      const dataUrl = await getSaveDataUrl(result.dataUrl)
+      setSaveDataUrl(dataUrl)
+      setShowSaveModal(true)
     }
   }
-
-  const [mobileSaveHint, setMobileSaveHint] = useState(false)
-  const [showSaveImage, setShowSaveImage] = useState(false)
 
   const resetUpload = () => {
     if (originalPreview) URL.revokeObjectURL(originalPreview)
@@ -504,32 +538,43 @@ function App() {
                         </p>
                       </div>
                     </div>
-                    <button onClick={downloadImage} className="w-full py-3 px-4 bg-gray-900 hover:bg-gray-800 text-white font-semibold rounded-xl transition-colors cursor-pointer text-sm flex items-center justify-center gap-2">
+                    <button onClick={downloadImage} className="w-full py-3.5 px-4 bg-gray-900 hover:bg-gray-800 text-white font-semibold rounded-xl transition-colors cursor-pointer text-sm flex items-center justify-center gap-2 active:scale-[0.98] active:transition-transform">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                      下载头像
+                      {isWeChatBrowser() ? '保存头像' : '下载头像'}
                     </button>
 
-                    {/* 移动端保存提示 */}
-                    {mobileSaveHint && (
-                      <div className="mt-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700 text-center animate-pulse">
-                        💡 若未自动下载，请长按下方预览图 →「存储图像」
-                      </div>
-                    )}
-
-                    {/* 长按保存：移动端兜底方案 */}
-                    {showSaveImage && (
-                      <>
-                        <p className="mt-2 text-xs text-center text-gray-400">👇 长按下方图片，选择「存储到相册」</p>
-                        <img
-                          src={result.dataUrl}
-                          alt="长按保存"
-                          className="mt-1 w-full rounded-lg border-2 border-dashed border-gray-300 select-none touch-none"
-                          style={{ WebkitTouchCallout: 'default', WebkitUserSelect: 'text' }}
-                        />
-                        <button onClick={() => setShowSaveImage(false)} className="mt-2 text-xs text-gray-400 hover:text-gray-600 underline cursor-pointer">
-                          关闭
+                    {/* 微信/移动端专属：全屏保存弹窗 */}
+                    {showSaveModal && (
+                      <div className="fixed inset-0 z-[9999] bg-black/95 flex flex-col items-center justify-center p-6 animate-in fade-in duration-200" onClick={() => setShowSaveModal(false)}>
+                        {/* 关闭按钮 */}
+                        <button
+                          onClick={() => setShowSaveModal(false)}
+                          className="absolute top-5 right-5 w-10 h-10 rounded-full bg-white/15 flex items-center justify-center text-white/80 hover:bg-white/25 cursor-pointer transition-colors"
+                        >
+                          ✕
                         </button>
-                      </>
+
+                        {/* 大标题提示 */}
+                        <div className="text-center mb-6">
+                          <p className="text-white font-bold text-xl mb-2">长按下方图片</p>
+                          <p className="text-white/60 text-base">选择「保存图片」到相册</p>
+                          {isWeChatBrowser() && (
+                            <p className="mt-2 text-green-400 text-sm font-medium">💡 微信内请长按图片 → 存储到手机</p>
+                          )}
+                        </div>
+
+                        {/* 全屏大图（确保足够大，方便长按触发） */}
+                        <img
+                          src={saveDataUrl || result?.dataUrl}
+                          alt="长按保存裁剪结果"
+                          className="w-72 h-72 rounded-2xl shadow-2xl select-none touch-none"
+                          style={{ WebkitTouchCallout: 'default', WebkitUserSelect: 'text' }}
+                          draggable={false}
+                        />
+
+                        {/* 底部二次提示 */}
+                        <p className="mt-8 text-white/40 text-xs">👆 长按上方图片 → 保存到相册 · 点击空白处关闭</p>
+                      </div>
                     )}
                   </div>
                 </div>
