@@ -419,9 +419,9 @@ function App() {
     <div className="min-h-screen flex flex-col bg-[#f8f9fa] text-gray-800">
       {/* 头部 */}
       <header className="text-center pt-10 pb-6 px-4">
-        <h1 className="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight">🖼️ 智能方形头像裁剪器</h1>
+        <h1 className="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight">视频号特效方形图标裁剪器</h1>
         <p className="mt-3 text-base text-gray-500 max-w-lg mx-auto leading-relaxed">
-          上传图片，自由拖动选择裁剪区域，一键生成 300×300 社交媒体标准头像
+          上传图片，自由拖动选择裁剪区域，一键生成 300×300 视频号特效图标
         </p>
       </header>
 
